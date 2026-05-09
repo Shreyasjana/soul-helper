@@ -1,0 +1,11 @@
+streamlit
+nltk
+spacy
+textblob
+scikit-learn
+pandas
+numpy
+matplotlib
+fpdf
+supabase
+python-dotenv

@@ -131,7 +131,7 @@ if not st.session_state["logged_in"]:
         st.markdown("### Create your profile")
         st.info("Pick a name and a PIN (4–8 digits). Your PIN protects your journal.")
         reg_name = st.text_input("Choose a username", key="reg_name",
-                                  placeholder="e.g. shreyas")
+                                  placeholder="e.g. XXXXXXXX")
         reg_pin  = st.text_input("Choose a PIN (4–8 digits)", type="password",
                                   key="reg_pin", max_chars=8,
                                   placeholder="4 to 8 digits")

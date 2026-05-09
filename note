@@ -1,0 +1,44 @@
+ spaCy language model:  (lib)
+ "industrial-strength" Natural Language Processing (NLP). Unlike research-focused tools, it is optimized for high-performance, large-scale text processing in production environments.
+
+NLTK data: (lib)
+ NLTK data refers to a collection of specialized datasets, corpora (body of text), pre-trained models, and grammars required to run advanced text processing tasks in the Natural Language Toolkit (NLTK) library for Python.
+
+config.py:  This file holds all the settings for the entire system in one place.
+
+collector.py:   It handles everything related to collecting the user's daily input — their journal entry, mood rating, energy level, and sleep hours.    The system saves each day as a dated JSON file
+
+nlp_processor.py:  This is where the system reads and understands the journal text. Raw text means nothing to a computer — this module converts it into numbers and labels that the rest of the system can work with.
+
+distortion_detector.py:  This is the most psychologically unique module in the entire project. It scans the journal text for cognitive distortions — irrational thinking patterns identified in Cognitive Behavioral Therapy (CBT).  It says that how we think directly affects how we feel and behave
+
+pattern_detector.py:   This is where the system stops looking at single days and starts looking at you across time. It connects the dots between all your journal entries and finds patterns.. This is the module that makes the system feel like it actually knows you.
+
+predictor.py:: This module gives the system its ability to anticipate you. Based on your past mood, energy, sleep, and sentiment patterns, it makes a simple prediction about what your next day might look like.
+
+intervention.py::This is the module where the system speaks to the user. Based on everything the previous modules have found — mood trends, energy levels, sleep patterns, cognitive distortions, sentiment drift — it generates personalized, psychologically grounded suggestions.
+
+                The suggestions are triggered by specific patterns detected in that individual's data. A person with a declining mood trend gets different advice than someone with a sleep-mood correlation. That specificity is what makes this a digital twin and not just a wellness app.
+
+report generator.py::  This module compiles everything the system has learned about the user over a week into a single structured psychological report. 
+
+app.py::  This is the face of the entire system. Everything you've built so far works in the background — this file brings it all together into a clean, interactive UI that the user actually sees and uses.
+
+
+
+
+Similar existing work
+Yes — things like Replika (AI companion that learns you), Woebot (CBT-based chatbot),
+ and academic research on Ecological Momentary Assessment (EMA) and Computational Psychiatry exist.
+  But none of them combine: personal journaling + behavioral pattern detection + 
+  digital twin modeling + psych-framework-based interventions in an open, buildable student project.
+   You're not copying anyone — you're combining existing ideas in a novel personal way.
+
+
+improvement
+can see previous days logs 
+
+7 days without any feedback or input from SH is kind long..soo give minute whatever understood 
+feedback...and precise one after 7 days/.
+
+share_to_others:  soul-apper-9n7shqvy5edefg4r4mjfnm.streamlit.app

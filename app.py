@@ -1,13 +1,6 @@
 # app.py
 # ---------------------------------------------------------------------------
 # Soul Helper (SH) — Multi-user Streamlit frontend with Supabase backend
-# Pages:
-#   1. Journal      — multi-entry journaling
-#   2. Insights     — patterns, predictions, interventions
-#   3. Distortions  — CBT cognitive distortion analysis
-#   4. Weekly Report— full psychological report
-#   5. Flush Out    — journal-informed conversational companion
-#   6. Researcher   — cross-user analysis dashboard (PIN protected)
 # ---------------------------------------------------------------------------
 
 import streamlit as st
@@ -40,17 +33,9 @@ from modules.database            import (create_user, verify_user,
 # PAGE CONFIG
 # ---------------------------------------------------------------------------
 
-st.set_page_config(
-    page_title="Soul Helper",
-    page_icon="🧠",
-    layout="wide"
-)
+st.set_page_config(page_title="Soul Helper", page_icon="🧠", layout="wide")
 
-# ---------------------------------------------------------------------------
-# RESEARCHER PASSWORD (change this to whatever you want)
-# ---------------------------------------------------------------------------
-
-RESEARCHER_PIN = "007700"  # Change this to your own secret PIN
+RESEARCHER_PASSWORD = "shreyasresearch2025"
 
 # ---------------------------------------------------------------------------
 # SESSION STATE INIT
@@ -67,13 +52,12 @@ if "fo_history" not in st.session_state:
 if "fo_intent"  not in st.session_state:
     st.session_state["fo_intent"]  = None
 
-
 # ---------------------------------------------------------------------------
-# HELPER — Load and process all entries for current user
+# HELPER
 # ---------------------------------------------------------------------------
 
-def load_and_process_all():
-    entries  = load_journal_entries(st.session_state["username"])
+def load_and_process_all(username):
+    entries  = load_journal_entries(username)
     all_nlp  = []
     all_dist = []
     for entry in entries:
@@ -86,29 +70,55 @@ def load_and_process_all():
     return entries, all_nlp, all_dist
 
 
+def build_analysis_snapshot(username, entries, all_nlp, all_dist,
+                              pattern_results, prediction_results, dist_history):
+    moods   = [e.get("mood",        5) for e in entries]
+    energys = [e.get("energy",      5) for e in entries]
+    sleeps  = [e.get("sleep_hours", 7) for e in entries]
+    recent_nlp       = all_nlp[-3:] if len(all_nlp) >= 3 else all_nlp
+    emotions         = [r.get("emotion", {}).get("dominant_emotion", "neutral") for r in recent_nlp]
+    dominant_emotion = max(set(emotions), key=emotions.count) if emotions else "neutral"
+    return {
+        "username":               username,
+        "avg_mood":               round(sum(moods)   / len(moods),   2) if moods   else 0,
+        "avg_energy":             round(sum(energys) / len(energys), 2) if energys else 0,
+        "avg_sleep":              round(sum(sleeps)  / len(sleeps),  2) if sleeps  else 0,
+        "mood_trend":             pattern_results.get("mood_trend",   {}).get("trend", "stable"),
+        "energy_trend":           pattern_results.get("energy_trend", {}).get("trend", "stable"),
+        "dominant_emotion":       dominant_emotion,
+        "most_common_distortion": dist_history.get("most_common", "None"),
+        "entry_count":            len(entries),
+        "predictions":            prediction_results,
+    }
+
+
 # ===========================================================================
 # LOGIN / REGISTER SCREEN
 # ===========================================================================
 
-def show_login():
+if not st.session_state["logged_in"]:
+
     st.title("🧠 Soul Helper")
     st.markdown("*Your Psychological Digital Twin*")
     st.markdown("---")
 
     tab1, tab2 = st.tabs(["🔑 Login", "✨ Register"])
 
-    # --- LOGIN ---
     with tab1:
         st.markdown("### Welcome back")
-        username_in = st.text_input("Your name", key="login_username").strip().lower()
-        pin_in      = st.text_input("Your PIN", type="password",
-                                     max_chars=4, key="login_pin")
+        login_name = st.text_input("Your name", key="login_name",
+                                   placeholder="Enter your username")
+        login_pin  = st.text_input("Your PIN", type="password",
+                                   key="login_pin", max_chars=8,
+                                   placeholder="4 to 8 digits")
 
-        if st.button("Login", use_container_width=True, key="login_btn"):
-            if not username_in or not pin_in:
+        if st.button("Login", use_container_width=True, key="btn_login"):
+            if not login_name or not login_pin:
                 st.error("Please enter both your name and PIN.")
+            elif len(login_pin) < 4 or len(login_pin) > 8 or not login_pin.isdigit():
+                st.error("PIN must be between 4 and 8 digits.")
             else:
-                result = verify_user(username_in, pin_in)
+                result = verify_user(login_name, login_pin)
                 if result["success"]:
                     st.session_state["logged_in"] = True
                     st.session_state["username"]  = result["username"]
@@ -117,714 +127,647 @@ def show_login():
                 else:
                     st.error(result["error"])
 
-    # --- REGISTER ---
     with tab2:
         st.markdown("### Create your profile")
-        st.info(
-            "Your journals are private. "
-            "Nobody can read them without your PIN — not even the researcher."
-        )
-        new_username = st.text_input("Choose a name", key="reg_username").strip().lower()
-        new_pin      = st.text_input("Choose a 4-digit PIN", type="password",
-                                      max_chars=4, key="reg_pin")
-        confirm_pin  = st.text_input("Confirm PIN", type="password",
-                                      max_chars=4, key="reg_pin2")
+        st.info("Pick a name and a PIN (4–8 digits). Your PIN protects your journal.")
+        reg_name = st.text_input("Choose a username", key="reg_name",
+                                  placeholder="e.g. shreyas")
+        reg_pin  = st.text_input("Choose a PIN (4–8 digits)", type="password",
+                                  key="reg_pin", max_chars=8,
+                                  placeholder="4 to 8 digits")
+        reg_pin2 = st.text_input("Confirm PIN", type="password",
+                                  key="reg_pin2", max_chars=8,
+                                  placeholder="4 to 8 digits")
 
-        if st.button("Create Profile", use_container_width=True, key="reg_btn"):
-            if not new_username or not new_pin:
+        if st.button("Create Account", use_container_width=True, key="btn_register"):
+            if not reg_name or not reg_pin or not reg_pin2:
                 st.error("Please fill in all fields.")
-            elif len(new_pin) != 4 or not new_pin.isdigit():
-                st.error("PIN must be exactly 4 digits.")
-            elif new_pin != confirm_pin:
+            elif len(reg_pin) < 4 or len(reg_pin) > 8 or not reg_pin.isdigit():
+                st.error("PIN must be between 4 and 8 digits.")
+            elif reg_pin != reg_pin2:
                 st.error("PINs don't match.")
             else:
-                result = create_user(new_username, new_pin)
+                result = create_user(reg_name, reg_pin)
                 if result["success"]:
-                    st.success(
-                        f"Profile created! You can now log in as **{new_username}**."
-                    )
+                    st.success(f"Account created! You can now log in as **{reg_name}**.")
                 else:
                     st.error(result["error"])
 
+    st.stop()
+
 
 # ===========================================================================
-# MAIN APP (after login)
+# LOGGED IN — SIDEBAR
 # ===========================================================================
 
-def show_main_app():
-    username          = st.session_state["username"]
-    user_id           = st.session_state["user_id"]
-    session_day_count = count_session_days_db(username)
-    entry_count       = count_entries_db(username)
-    baseline          = session_day_count >= config.BASELINE_DAYS
+username = st.session_state["username"]
+user_id  = st.session_state["user_id"]
 
-    # --- SIDEBAR ---
-    st.sidebar.title("🧠 Soul Helper")
-    st.sidebar.markdown(f"*Hey, {username}* 👋")
-    st.sidebar.markdown("---")
+session_day_count = count_session_days_db(username)
+entry_count       = count_entries_db(username)
+baseline          = session_day_count >= config.BASELINE_DAYS
 
-    st.sidebar.markdown("### 📊 Your Progress")
-    st.sidebar.progress(min(session_day_count / config.BASELINE_DAYS, 1.0))
-    st.sidebar.markdown(f"**{session_day_count} / {config.BASELINE_DAYS}** days logged")
-    st.sidebar.markdown(f"*({entry_count} total entries)*")
+st.sidebar.title("🧠 Soul Helper")
+st.sidebar.markdown(f"*Hey, **{username}** 👋*")
+st.sidebar.markdown("---")
 
-    if not baseline:
-        remaining = max(0, config.BASELINE_DAYS - session_day_count)
-        st.sidebar.warning(f"⏳ {remaining} more day(s) before insights unlock.")
+st.sidebar.markdown("### 📊 Your Progress")
+st.sidebar.progress(min(session_day_count / config.BASELINE_DAYS, 1.0))
+st.sidebar.markdown(f"**{session_day_count} / {config.BASELINE_DAYS}** days logged")
+st.sidebar.markdown(f"*({entry_count} total entries)*")
+
+if not baseline:
+    remaining = config.BASELINE_DAYS - session_day_count
+    st.sidebar.warning(f"⏳ {remaining} more day(s) before insights unlock.")
+else:
+    st.sidebar.success("✅ Baseline reached — insights active.")
+
+st.sidebar.markdown("---")
+
+page = st.sidebar.radio(
+    "Navigate",
+    ["📓 Journal", "🔍 Insights", "🧩 Distortions",
+     "📋 Weekly Report", "💬 Flush Out", "🔬 Researcher"]
+)
+
+st.sidebar.markdown("---")
+if st.sidebar.button("🚪 Logout"):
+    for key in ["logged_in", "username", "user_id",
+                "fo_history", "fo_intent", "session_choice"]:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.rerun()
+
+
+# ===========================================================================
+# PAGE 1 — JOURNAL
+# ===========================================================================
+
+if page == "📓 Journal":
+
+    st.title("📓 Daily Journal")
+    st.markdown("Write freely. This is your space. The system will read between the lines so you don't have to.")
+    st.markdown("---")
+
+    now  = datetime.now()
+    hour = now.hour
+
+    if 0 <= hour < 12:
+        st.markdown(f"### {now.strftime('%A, %d %B %Y')} — {now.strftime('%I:%M %p')}")
+        st.warning(f"⏰ It's {now.strftime('%I:%M %p')}. Which day do you want this entry to belong to?")
+
+        col_opt1, col_opt2 = st.columns(2)
+        with col_opt1:
+            yesterday_label = (now - timedelta(days=1)).strftime("%A, %d %B")
+            if st.button(f"📅 Yesterday  ({yesterday_label})",
+                         use_container_width=True, key="session_yesterday"):
+                st.session_state["session_choice"] = "yesterday"
+        with col_opt2:
+            today_label = now.strftime("%A, %d %B")
+            if st.button(f"📅 Today  ({today_label})",
+                         use_container_width=True, key="session_today"):
+                st.session_state["session_choice"] = "today"
+
+        if "session_choice" not in st.session_state:
+            st.session_state["session_choice"] = "yesterday"
+
+        user_choice   = st.session_state["session_choice"]
+        today_session = get_session_day(now, user_choice=user_choice)
+        choice_label  = (
+            (now - timedelta(days=1)).strftime("%A, %d %B")
+            if user_choice == "yesterday"
+            else now.strftime("%A, %d %B")
+        )
+        st.info(f"✅ Entry will be saved under: **{choice_label}** ({today_session})")
+
     else:
-        st.sidebar.success("✅ Baseline reached — insights active.")
+        today_session = get_session_day(now)
+        if "session_choice" in st.session_state:
+            del st.session_state["session_choice"]
+        st.markdown(f"### {now.strftime('%A, %d %B %Y')}")
 
-    st.sidebar.markdown("---")
+    today_entries = load_entries_by_day_db(username, today_session)
 
-    page = st.sidebar.radio(
-        "Navigate",
-        ["📓 Journal", "🔍 Insights", "🧩 Distortions",
-         "📋 Weekly Report", "💬 Flush Out", "🔬 Researcher"]
+    st.markdown("---")
+    st.info("💡 **Multi-entry:** You can journal multiple times. Each entry is timestamped.")
+    st.markdown("#### ✍️ Write a New Entry")
+
+    journal_text = st.text_area(
+        "What's on your mind?", height=200,
+        placeholder="Write about your day, how you're feeling...",
+        key="journal_input"
     )
 
-    if st.sidebar.button("🚪 Logout", use_container_width=True):
-        for key in ["logged_in", "username", "user_id",
-                    "fo_history", "fo_intent", "session_choice"]:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        mood = st.slider("😊 Mood", config.MOOD_MIN, config.MOOD_MAX, 5)
+    with col2:
+        energy = st.slider("⚡ Energy", config.ENERGY_MIN, config.ENERGY_MAX, 5)
+    with col3:
+        sleep = st.slider("😴 Sleep (hours)", float(config.SLEEP_MIN),
+                          float(config.SLEEP_MAX), 7.0, step=0.5)
 
-    # =======================================================================
-    # PAGE 1 — JOURNAL
-    # =======================================================================
+    st.markdown("---")
 
-    if page == "📓 Journal":
-
-        st.title("📓 Daily Journal")
-        st.markdown(
-            "Write freely. This is your space. "
-            "The system will read between the lines so you don't have to."
-        )
-        st.markdown("---")
-
-        now  = datetime.now()
-        hour = now.hour
-
-        if 0 <= hour < 12:
-            st.markdown(
-                f"### {now.strftime('%A, %d %B %Y')} — {now.strftime('%I:%M %p')}"
-            )
-            st.warning(
-                f"⏰ It's {now.strftime('%I:%M %p')}. "
-                "Which day do you want this entry to belong to?"
-            )
-
-            col_opt1, col_opt2 = st.columns(2)
-
-            with col_opt1:
-                yesterday_label = (now - timedelta(days=1)).strftime("%A, %d %B")
-                if st.button(
-                    f"📅 Yesterday  ({yesterday_label})",
-                    use_container_width=True,
-                    key="session_yesterday"
-                ):
-                    st.session_state["session_choice"] = "yesterday"
-
-            with col_opt2:
-                today_label = now.strftime("%A, %d %B")
-                if st.button(
-                    f"📅 Today  ({today_label})",
-                    use_container_width=True,
-                    key="session_today"
-                ):
-                    st.session_state["session_choice"] = "today"
-
-            if "session_choice" not in st.session_state:
-                st.session_state["session_choice"] = "yesterday"
-
-            user_choice   = st.session_state["session_choice"]
-            today_session = get_session_day(now, user_choice=user_choice)
-
-            choice_label = (
-                (now - timedelta(days=1)).strftime("%A, %d %B")
-                if user_choice == "yesterday"
-                else now.strftime("%A, %d %B")
-            )
-            st.info(
-                f"✅ Entry will be saved under: **{choice_label}** ({today_session})"
-            )
-
+    if st.button("💾 Save Entry", use_container_width=True):
+        if not journal_text.strip():
+            st.error("Please write something before saving.")
         else:
-            today_session = get_session_day(now)
-            if "session_choice" in st.session_state:
-                del st.session_state["session_choice"]
-            st.markdown(f"### {now.strftime('%A, %d %B %Y')}")
+            entry     = save_entry(journal_text, mood, energy, sleep,
+                                   typing_time_seconds=0,
+                                   session_day_override=today_session)
+            db_result = save_journal_entry(username, user_id, entry)
 
-        today_entries = load_entries_by_day_db(username, today_session)
-
-        st.markdown("---")
-        st.info(
-            "💡 **Multi-entry:** You can journal multiple times. "
-            "Each entry is timestamped and analyzed individually."
-        )
-
-        st.markdown("#### ✍️ Write a New Entry")
-
-        journal_text = st.text_area(
-            "What's on your mind?",
-            height=200,
-            placeholder="Write about your day, how you're feeling...",
-            key="journal_input"
-        )
-
-        st.markdown("---")
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            mood = st.slider("😊 Mood", config.MOOD_MIN, config.MOOD_MAX, 5,
-                             help="1 = Very low, 10 = Excellent")
-        with col2:
-            energy = st.slider("⚡ Energy", config.ENERGY_MIN, config.ENERGY_MAX, 5,
-                               help="1 = Exhausted, 10 = Fully energized")
-        with col3:
-            sleep = st.slider("😴 Sleep (hours)", float(config.SLEEP_MIN),
-                              float(config.SLEEP_MAX), 7.0, step=0.5)
-
-        st.markdown("---")
-
-        if st.button("💾 Save Entry", use_container_width=True):
-            if not journal_text.strip():
-                st.error("Please write something before saving.")
+            if db_result["success"]:
+                st.success(f"✅ Entry saved at **{entry['time']}** under session: **{entry['session_day']}**")
             else:
-                # Save locally first (to get entry object)
-                entry = save_entry(
-                    journal_text, mood, energy, sleep,
-                    typing_time_seconds=0,
-                    session_day_override=today_session
-                )
+                st.error(f"Save failed: {db_result['error']}")
 
-                # Save to Supabase
-                db_result = save_journal_entry(username, user_id, entry)
+            st.markdown("---")
+            st.markdown("### 🔍 Quick Analysis of This Entry")
 
-                if db_result["success"]:
-                    st.success(
-                        f"✅ Entry saved at **{entry['time']}** "
-                        f"under session: **{entry['session_day']}**"
-                    )
-                else:
-                    st.error(f"Save failed: {db_result['error']}")
+            nlp  = process_journal(journal_text)
+            dist = detect_distortions(journal_text)
 
-                # Quick NLP feedback
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                sentiment = nlp["sentiment"]
+                label     = sentiment["label"]
+                score     = sentiment["compound_score"]
+                emoji     = "😊" if label == "positive" else ("😔" if label == "negative" else "😐")
+                st.metric("Sentiment", f"{emoji} {label.title()}", f"Score: {score}")
+            with col_b:
+                emotion = nlp["emotion"]["dominant_emotion"].title()
+                st.metric("Dominant Emotion", emotion)
+            with col_c:
+                agitation = entry['behavioral_signals']['agitation_score']
+                emoji_ag  = "🔥" if agitation > 0.7 else ("⚡" if agitation > 0.4 else "😌")
+                st.metric("Agitation Level", f"{emoji_ag} {agitation}")
+
+            keywords = nlp["keywords"]
+            if keywords:
+                st.markdown("**Key themes in this entry:**")
+                st.markdown(" ".join([f"`{kw}`" for kw in keywords]))
+
+            if not dist["clean"]:
                 st.markdown("---")
-                st.markdown("### 🔍 Quick Analysis of This Entry")
+                st.warning(get_distortion_summary(dist))
 
-                nlp  = process_journal(journal_text)
-                dist = detect_distortions(journal_text)
+    st.markdown("---")
+    today_entries = load_entries_by_day_db(username, today_session)
+    st.markdown(f"### 📝 Entries for {today_session}  ({len(today_entries)} total)")
 
-                col_a, col_b, col_c = st.columns(3)
+    if today_entries:
+        for i, e in enumerate(today_entries, 1):
+            entry_id  = e.get("entry_id", "?")
+            agitation = e['behavioral_signals']['agitation_score']
+            with st.expander(
+                f"Entry {i}  —  {e['time']}  |  "
+                f"Mood: {e['mood']}/10  |  Agitation: {agitation}"
+            ):
+                col_left, col_right = st.columns([4, 1])
+                with col_left:
+                    st.markdown(
+                        f"**Time:** {e['time']}  |  **Mood:** {e['mood']}/10  |  "
+                        f"**Energy:** {e['energy']}/10  |  **Sleep:** {e['sleep_hours']}h"
+                    )
+                    st.info(e['journal'])
+                with col_right:
+                    st.markdown("&nbsp;", unsafe_allow_html=True)
+                    if st.button("🗑️ Delete", key=f"delete_{entry_id}"):
+                        delete_journal_entry_db(entry_id, username)
+                        st.success("Deleted.")
+                        st.rerun()
+    else:
+        st.info("No entries yet for this session. Start writing above.")
 
-                with col_a:
-                    sentiment = nlp["sentiment"]
-                    label     = sentiment["label"]
-                    score     = sentiment["compound_score"]
-                    emoji     = "😊" if label == "positive" else \
-                                ("😔" if label == "negative" else "😐")
-                    st.metric("Sentiment", f"{emoji} {label.title()}",
-                              f"Score: {score}")
 
-                with col_b:
-                    emotion = nlp["emotion"]["dominant_emotion"].title()
-                    st.metric("Dominant Emotion", emotion)
+# ===========================================================================
+# PAGE 2 — INSIGHTS
+# ===========================================================================
 
-                with col_c:
-                    agitation = entry['behavioral_signals']['agitation_score']
-                    emoji_ag  = "🔥" if agitation > 0.7 else \
-                                ("⚡" if agitation > 0.4 else "😌")
-                    st.metric("Agitation Level", f"{emoji_ag} {agitation}",
-                              help="0.0 = calm  |  1.0 = very agitated")
+elif page == "🔍 Insights":
 
-                keywords = nlp["keywords"]
-                if keywords:
-                    st.markdown("**Key themes in this entry:**")
-                    st.markdown(" ".join([f"`{kw}`" for kw in keywords]))
+    st.title("🔍 Behavioral Insights")
 
-                if not dist["clean"]:
-                    st.markdown("---")
-                    st.warning(get_distortion_summary(dist))
+    if not baseline:
+        st.warning(f"⏳ Insights unlock after {config.BASELINE_DAYS} days. You have {session_day_count} so far.")
+        st.stop()
 
-        # All entries for today
+    entries, all_nlp, all_dist = load_and_process_all(username)
+    pattern_results    = run_pattern_analysis(entries, all_nlp)
+    prediction_results = run_predictions(entries, all_nlp)
+    last_dist          = all_dist[-1].get("distortions", {}) if all_dist else {}
+    intervention_res   = run_interventions(pattern_results, prediction_results, last_dist)
+    dist_history       = get_distortion_history(all_dist)
+    snapshot           = build_analysis_snapshot(username, entries, all_nlp, all_dist,
+                                                  pattern_results, prediction_results, dist_history)
+    save_researcher_snapshot(username, snapshot)
+
+    st.markdown("---")
+    st.markdown("### 📈 Mood & Energy Trends")
+    col1, col2   = st.columns(2)
+    mood_trend   = pattern_results["mood_trend"]
+    energy_trend = pattern_results["energy_trend"]
+
+    with col1:
+        t = mood_trend["trend"]
+        e = "📈" if t == "improving" else ("📉" if t == "declining" else "➡️")
+        st.metric("Mood Trend", f"{e} {t.title()}", f"Avg: {mood_trend['average']}/10")
+        st.line_chart(mood_trend["scores"])
+
+    with col2:
+        t = energy_trend["trend"]
+        e = "📈" if t == "improving" else ("📉" if t == "declining" else "➡️")
+        st.metric("Energy Trend", f"{e} {t.title()}", f"Avg: {energy_trend['average']}/10")
+        st.line_chart(energy_trend["scores"])
+
+    st.markdown("---")
+    st.markdown("### 😴 Sleep Impact")
+    if pattern_results["sleep_impact"]["correlation_flag"]:
+        st.warning(pattern_results["sleep_impact"]["message"])
+    else:
+        st.info(pattern_results["sleep_impact"]["message"])
+
+    st.markdown("---")
+    st.markdown("### 📅 Day of Week Patterns")
+    day_data = pattern_results["day_of_week"]
+    col3, col4 = st.columns(2)
+    with col3:
+        st.success(f"🌟 Best day: **{day_data.get('best_day','?')}**")
+    with col4:
+        st.error(f"⚠️ Hardest day: **{day_data.get('worst_day','?')}**")
+    if day_data.get("day_averages"):
+        st.bar_chart(day_data["day_averages"])
+
+    st.markdown("---")
+    st.markdown("### 🏷️ Recurring Life Themes")
+    themes = pattern_results.get("recurring_themes", [])
+    if themes:
+        st.markdown(" ".join([f"`{t}`" for t in themes]))
+    else:
+        st.info("Not enough data yet.")
+
+    st.markdown("---")
+    st.markdown("### 🔮 Tomorrow's Forecast")
+    mood_pred   = prediction_results["mood_prediction"]
+    energy_pred = prediction_results["energy_prediction"]
+    col5, col6  = st.columns(2)
+    with col5:
+        if mood_pred.get("predicted_mood"):
+            st.metric("Predicted Mood", f"{mood_pred['predicted_mood']}/10",
+                      f"Confidence: {mood_pred['confidence']}")
+    with col6:
+        if energy_pred.get("predicted_energy"):
+            st.metric("Predicted Energy", f"{energy_pred['predicted_energy']}/10",
+                      f"Confidence: {energy_pred['confidence']}")
+
+    risk = prediction_results["risk_flags"]
+    if risk["flagged"]:
         st.markdown("---")
-        today_entries = load_entries_by_day_db(username, today_session)
-        st.markdown(
-            f"### 📝 Entries for {today_session}  ({len(today_entries)} total)"
-        )
+        for flag in risk["flags"]:
+            st.error(flag)
 
-        if today_entries:
-            for i, e in enumerate(today_entries, 1):
-                entry_id  = e.get("entry_id", "?")
-                agitation = e['behavioral_signals']['agitation_score']
+    st.markdown("---")
+    st.markdown("### 💡 Personalized Interventions")
+    st.markdown("*Grounded in evidence-based psychology.*")
+    for item in intervention_res.get("interventions", []):
+        with st.expander(f"🔸 {item['title']}"):
+            st.markdown(item["message"])
+            st.markdown(f"*Framework: {item['framework']}*")
 
-                with st.expander(
-                    f"Entry {i}  —  {e['time']}  |  "
-                    f"Mood: {e['mood']}/10  |  "
-                    f"Agitation: {agitation}"
-                ):
-                    col_left, col_right = st.columns([4, 1])
 
-                    with col_left:
-                        st.markdown(
-                            f"**Time:** {e['time']}  |  "
-                            f"**Mood:** {e['mood']}/10  |  "
-                            f"**Energy:** {e['energy']}/10  |  "
-                            f"**Sleep:** {e['sleep_hours']}h"
-                        )
-                        st.info(e['journal'])
+# ===========================================================================
+# PAGE 3 — DISTORTIONS
+# ===========================================================================
 
-                    with col_right:
-                        st.markdown("&nbsp;", unsafe_allow_html=True)
-                        if st.button("🗑️ Delete", key=f"delete_{entry_id}"):
-                            delete_journal_entry_db(entry_id, username)
-                            st.success("Deleted.")
-                            st.rerun()
+elif page == "🧩 Distortions":
+
+    st.title("🧩 Cognitive Distortion Tracker")
+    st.markdown("---")
+
+    if entry_count == 0:
+        st.info("No journal entries yet. Start journaling to see distortion analysis.")
+        st.stop()
+
+    entries, all_nlp, all_dist = load_and_process_all(username)
+
+    st.markdown("### 🔍 Most Recent Entry Analysis")
+    today_session = get_session_day(datetime.now())
+    today_entries = load_entries_by_day_db(username, today_session)
+
+    if today_entries:
+        latest_dist = detect_distortions(today_entries[-1].get("journal", ""))
+        summary     = get_distortion_summary(latest_dist)
+        if latest_dist["clean"]:
+            st.success(summary)
         else:
-            st.info("No entries yet for this session. Start writing above.")
+            st.warning(summary)
+    else:
+        st.info("No entries yet for today's session.")
 
-    # =======================================================================
-    # PAGE 2 — INSIGHTS
-    # =======================================================================
+    st.markdown("---")
 
-    elif page == "🔍 Insights":
+    if baseline:
+        st.markdown("### 📊 Distortion History")
+        history     = get_distortion_history(all_dist)
+        freq_map    = history["frequency_map"]
+        most_common = history["most_common"]
+        flagged     = history["total_flagged"]
 
-        st.title("🔍 Behavioral Insights")
-
-        if not baseline:
-            st.warning(
-                f"⏳ Insights unlock after {config.BASELINE_DAYS} days. "
-                f"You have {session_day_count} days so far. Keep going."
-            )
-            st.stop()
-
-        entries, all_nlp, all_dist = load_and_process_all()
-        pattern_results    = run_pattern_analysis(entries, all_nlp)
-        prediction_results = run_predictions(entries, all_nlp)
-        last_dist          = all_dist[-1].get("distortions", {}) if all_dist else {}
-        intervention_res   = run_interventions(
-            pattern_results, prediction_results, last_dist
-        )
-
-        st.markdown("---")
-
-        st.markdown("### 📈 Mood & Energy Trends")
-        col1, col2   = st.columns(2)
-        mood_trend   = pattern_results["mood_trend"]
-        energy_trend = pattern_results["energy_trend"]
-
+        col1, col2 = st.columns(2)
         with col1:
-            t = mood_trend["trend"]
-            e = "📈" if t == "improving" else ("📉" if t == "declining" else "➡️")
-            st.metric("Mood Trend", f"{e} {t.title()}",
-                      f"Avg: {mood_trend['average']}/10")
-            st.line_chart(mood_trend["scores"])
-
+            st.metric("Days with distortions", flagged)
         with col2:
-            t = energy_trend["trend"]
-            e = "📈" if t == "improving" else ("📉" if t == "declining" else "➡️")
-            st.metric("Energy Trend", f"{e} {t.title()}",
-                      f"Avg: {energy_trend['average']}/10")
-            st.line_chart(energy_trend["scores"])
+            st.metric("Most common distortion", most_common)
 
-        st.markdown("---")
-
-        st.markdown("### 😴 Sleep Impact")
-        if pattern_results["sleep_impact"]["correlation_flag"]:
-            st.warning(pattern_results["sleep_impact"]["message"])
+        active = {k: v for k, v in freq_map.items() if v > 0}
+        if active:
+            st.bar_chart(active)
         else:
-            st.info(pattern_results["sleep_impact"]["message"])
+            st.success("No distortions detected across your history.")
+    else:
+        st.info(f"Unlocks after {config.BASELINE_DAYS} days. You have {session_day_count}.")
+
+
+# ===========================================================================
+# PAGE 4 — WEEKLY REPORT
+# ===========================================================================
+
+elif page == "📋 Weekly Report":
+
+    st.title("📋 Weekly Psychological Report")
+    st.markdown("---")
+
+    if not baseline:
+        st.warning(f"Unlocks after {config.BASELINE_DAYS} days. You have {session_day_count}.")
+        st.stop()
+
+    if st.button("📄 Generate My Report", use_container_width=True):
+        with st.spinner("Analyzing your data..."):
+            entries  = load_journal_entries(username)
+            all_nlp  = []
+            all_dist = []
+            for entry in entries:
+                text = entry.get("journal", "")
+                nlp  = process_journal(text)
+                dist = detect_distortions(text)
+                nlp["distortions"] = dist
+                all_nlp.append(nlp)
+                all_dist.append({"distortions": dist})
+
+            pattern_results    = run_pattern_analysis(entries, all_nlp)
+            prediction_results = run_predictions(entries, all_nlp)
+            dist_history       = get_distortion_history(all_dist)
+            last_dist          = all_dist[-1].get("distortions", {}) if all_dist else {}
+            intervention_res   = run_interventions(pattern_results, prediction_results, last_dist)
 
         st.markdown("---")
-
-        st.markdown("### 📅 Day of Week Patterns")
-        day_data = pattern_results["day_of_week"]
-        col3, col4 = st.columns(2)
-        with col3:
-            st.success(f"🌟 Best day: **{day_data.get('best_day','?')}**")
-        with col4:
-            st.error(f"⚠️ Hardest day: **{day_data.get('worst_day','?')}**")
-        if day_data.get("day_averages"):
-            st.bar_chart(day_data["day_averages"])
-
+        st.markdown(f"## 🧠 Soul Helper — Weekly Report for {username.title()}")
+        st.markdown(f"*Generated: {datetime.now().strftime('%d %B %Y, %I:%M %p')}*")
+        st.markdown(f"*Entries analyzed: {len(entries)}*")
         st.markdown("---")
 
-        st.markdown("### 🏷️ Recurring Life Themes")
-        themes = pattern_results.get("recurring_themes", [])
-        if themes:
-            st.markdown(" ".join([f"`{t}`" for t in themes]))
-        else:
-            st.info("Not enough data yet.")
+        moods   = [e.get("mood",        5) for e in entries]
+        energys = [e.get("energy",      5) for e in entries]
+        sleeps  = [e.get("sleep_hours", 7) for e in entries]
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Avg Mood",   f"{round(sum(moods)/len(moods),1)}/10")
+        with c2:
+            st.metric("Avg Energy", f"{round(sum(energys)/len(energys),1)}/10")
+        with c3:
+            st.metric("Avg Sleep",  f"{round(sum(sleeps)/len(sleeps),1)}h")
 
         st.markdown("---")
+        st.markdown("### 📈 Trends")
+        mt = pattern_results["mood_trend"]["trend"]
+        et = pattern_results["energy_trend"]["trend"]
+        st.markdown(
+            f"**Mood:** {mt.title()}  |  **Energy:** {et.title()}  |  "
+            f"**Sentiment:** {pattern_results['sentiment_drift']['drift'].title()}"
+        )
 
-        st.markdown("### 🔮 Tomorrow's Forecast")
-        mood_pred   = prediction_results["mood_prediction"]
-        energy_pred = prediction_results["energy_prediction"]
-        col5, col6  = st.columns(2)
+        st.markdown("---")
+        st.markdown("### 🧩 Cognitive Distortions")
+        st.markdown(
+            f"**Days with distortions:** {dist_history.get('total_flagged',0)}  |  "
+            f"**Most common:** {dist_history.get('most_common','None')}"
+        )
 
-        with col5:
-            if mood_pred.get("predicted_mood"):
-                st.metric("Predicted Mood",
-                          f"{mood_pred['predicted_mood']}/10",
-                          f"Confidence: {mood_pred['confidence']}")
-        with col6:
-            if energy_pred.get("predicted_energy"):
-                st.metric("Predicted Energy",
-                          f"{energy_pred['predicted_energy']}/10",
-                          f"Confidence: {energy_pred['confidence']}")
+        st.markdown("---")
+        st.markdown("### 💡 Personalized Interventions")
+        for item in intervention_res.get("interventions", []):
+            with st.expander(f"🔸 {item['title']}"):
+                st.markdown(item["message"])
+                st.markdown(f"*{item['framework']}*")
 
         risk = prediction_results["risk_flags"]
         if risk["flagged"]:
             st.markdown("---")
+            st.markdown("### ⚠️ Risk Flags")
             for flag in risk["flags"]:
                 st.error(flag)
 
-        st.markdown("---")
 
-        st.markdown("### 💡 Personalized Interventions")
-        st.markdown(
-            "*Based on your behavioral data, grounded in evidence-based psychology.*"
-        )
-        for item in intervention_res.get("interventions", []):
-            with st.expander(f"🔸 {item['title']}"):
-                st.markdown(item["message"])
-                st.markdown(f"*Framework: {item['framework']}*")
+# ===========================================================================
+# PAGE 5 — FLUSH OUT
+# ===========================================================================
 
-        # Auto-save researcher snapshot
-        entries_all = load_journal_entries(username)
-        if entries_all:
-            moods   = [e.get("mood",        5) for e in entries_all]
-            energys = [e.get("energy",      5) for e in entries_all]
-            sleeps  = [e.get("sleep_hours", 7) for e in entries_all]
+elif page == "💬 Flush Out":
 
-            all_dist_flat = get_distortion_history(all_dist)
+    st.title("💬 Flush Out")
+    st.markdown("*Your personal assistant — trained on your journals, not on strangers.*")
+    st.markdown("---")
 
-            save_researcher_snapshot(username, {
-                "avg_mood":               round(sum(moods)   / len(moods),   2),
-                "avg_energy":             round(sum(energys) / len(energys), 2),
-                "avg_sleep":              round(sum(sleeps)  / len(sleeps),  2),
-                "mood_trend":             pattern_results["mood_trend"]["trend"],
-                "energy_trend":           pattern_results["energy_trend"]["trend"],
-                "dominant_emotion":       all_nlp[-1].get("emotion", {}).get(
-                                          "dominant_emotion", "neutral") if all_nlp else "neutral",
-                "most_common_distortion": all_dist_flat.get("most_common", "None"),
-                "predictions":            prediction_results,
-                "entry_count":            len(entries_all)
-            })
-
-    # =======================================================================
-    # PAGE 3 — DISTORTIONS
-    # =======================================================================
-
-    elif page == "🧩 Distortions":
-
-        st.title("🧩 Cognitive Distortion Tracker")
-        st.markdown(
-            "Cognitive distortions are irrational thinking patterns identified in CBT. "
-            "Tracking them over time reveals your personal thinking signature."
-        )
-        st.markdown("---")
-
-        if entry_count == 0:
-            st.info("No journal entries yet. Start journaling.")
-            st.stop()
-
-        entries, all_nlp, all_dist = load_and_process_all()
-
-        st.markdown("### 🔍 Most Recent Entry Analysis")
-        now           = datetime.now()
-        today_session = get_session_day(now)
-        today_entries = load_entries_by_day_db(username, today_session)
-
-        if today_entries:
-            latest_dist = detect_distortions(today_entries[-1].get("journal", ""))
-            summary     = get_distortion_summary(latest_dist)
-            if latest_dist["clean"]:
-                st.success(summary)
-            else:
-                st.warning(summary)
-        else:
-            st.info("No entries yet for today's session.")
-
-        st.markdown("---")
-
-        if baseline:
-            st.markdown("### 📊 Distortion History")
-            history     = get_distortion_history(all_dist)
-            freq_map    = history["frequency_map"]
-            most_common = history["most_common"]
-            flagged     = history["total_flagged"]
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Days with distortions", flagged)
-            with col2:
-                st.metric("Most common distortion", most_common)
-
-            active = {k: v for k, v in freq_map.items() if v > 0}
-            if active:
-                st.bar_chart(active)
-            else:
-                st.success("No distortions detected across your history.")
-        else:
-            st.info(
-                f"Historical tracking unlocks after {config.BASELINE_DAYS} days. "
-                f"You have {session_day_count} days."
-            )
-
-    # =======================================================================
-    # PAGE 4 — WEEKLY REPORT
-    # =======================================================================
-
-    elif page == "📋 Weekly Report":
-
-        st.title("📋 Weekly Psychological Report")
-        st.markdown("---")
-
-        if not baseline:
-            st.warning(
-                f"Reports unlock after {config.BASELINE_DAYS} days. "
-                f"You have {session_day_count} days."
-            )
-            st.stop()
-
-        if st.button("📄 Generate My Report", use_container_width=True):
-            with st.spinner("Analyzing and compiling report..."):
-                entries, all_nlp, all_dist = load_and_process_all()
-                pattern_results    = run_pattern_analysis(entries, all_nlp)
-                prediction_results = run_predictions(entries, all_nlp)
-                dist_history       = get_distortion_history(all_dist)
-                last_dist          = all_dist[-1].get("distortions", {}) \
-                                     if all_dist else {}
-                intervention_res   = run_interventions(
-                    pattern_results, prediction_results, last_dist
-                )
-
-                from modules.report_generator import (
-                    build_header, build_overview, build_mood_energy_log,
-                    build_sentiment_section, build_distortion_section,
-                    build_pattern_section, build_prediction_section,
-                    build_intervention_section, build_footer
-                )
-                import os
-                date_str    = datetime.now().strftime("%Y-%m-%d %H:%M")
-                report_text = "\n".join([
-                    build_header(len(entries), date_str),
-                    build_overview(entries),
-                    build_mood_energy_log(entries),
-                    build_sentiment_section(all_nlp, entries),
-                    build_distortion_section(dist_history),
-                    build_pattern_section(pattern_results),
-                    build_prediction_section(prediction_results),
-                    build_intervention_section(intervention_res),
-                    build_footer()
-                ])
-
-            st.success("✅ Report generated!")
-            st.markdown("---")
-            st.text(report_text)
-
-    # =======================================================================
-    # PAGE 5 — FLUSH OUT
-    # =======================================================================
-
-    elif page == "💬 Flush Out":
-
-        st.title("💬 Flush Out")
-        st.markdown(
-            "*Your personal assistant — trained on your journals, not on strangers.*"
-        )
-        st.markdown("---")
-
-        with st.expander("💡 What is Flush Out?"):
-            st.markdown("""
+    with st.expander("💡 What is Flush Out?"):
+        st.markdown("""
 **Flush Out (FO)** is your personal companion — part friend, part advisor, part caretaker.
 
-Unlike any other chatbot, FO actually **knows you**. It reads your journal entries over time and builds a psychological understanding of who you are — your mood patterns, emotional tendencies, thinking habits, and the things that affect you most.
+Unlike any other chatbot, FO actually **knows you**. It reads your journal entries and builds
+a psychological understanding of who you are — your mood patterns, emotional tendencies,
+thinking habits, and what affects you most.
 
 **What FO can do:**
-- 💬 **Just chat** — smalltalk, random topics, jokes, killing time
-- 🧠 **Teach you things** — science, psychology, philosophy, life concepts
-- 🎯 **Give real opinions** — on music, AI, school, relationships, anything
-- 🤝 **Help you think through problems** — decisions, conflicts, anxiety, motivation
-- 🫂 **Check in on you** — if your journals show you're struggling, FO notices
+- 💬 Just chat — smalltalk, random topics, jokes, killing time
+- 🧠 Teach you things — science, psychology, philosophy, life concepts
+- 🎯 Give real opinions — on music, AI, school, relationships, anything
+- 🤝 Help you think through problems — decisions, conflicts, anxiety, motivation
+- 🫂 Check in on you — if your journals show you're struggling, FO notices
 
 **One rule:** the more you journal, the better FO knows you.
-            """)
+        """)
 
-        st.markdown("---")
+    st.markdown("---")
 
-        if entry_count == 0:
-            st.warning("Write a few journal entries first, then come talk to FO.")
-            st.stop()
+    if entry_count == 0:
+        st.warning("Write a few journal entries first and then come talk to FO.")
+        st.stop()
 
-        from modules.soul_helper import flush_out, save_conversation
+    from modules.soul_helper import flush_out, save_conversation
+    import modules.soul_helper as sh_module
 
-        # Override soul_helper's load to use DB entries
-        import modules.soul_helper as sh_module
-        import modules.collector   as col_module
+    def supabase_build_profile():
+        entries = load_journal_entries(username)
+        if not entries:
+            return None
+        all_nlp  = []
+        all_dist = []
+        for entry in entries:
+            text = entry.get("journal", "")
+            nlp  = process_journal(text)
+            dist = detect_distortions(text)
+            nlp["distortions"] = dist
+            all_nlp.append(nlp)
+            all_dist.append({"distortions": dist})
 
-        original_load = col_module.load_all_entries
+        from modules.pattern_detector    import run_pattern_analysis
+        from modules.distortion_detector import get_distortion_history
 
-        def load_for_user():
-            return load_journal_entries(st.session_state["username"])
+        patterns     = run_pattern_analysis(entries, all_nlp)
+        dist_history = get_distortion_history(all_dist)
 
-        col_module.load_all_entries = load_for_user
+        moods   = [e.get("mood",        5) for e in entries]
+        energys = [e.get("energy",      5) for e in entries]
+        sleeps  = [e.get("sleep_hours", 7) for e in entries]
 
-        if "fo_history" not in st.session_state:
-            st.session_state["fo_history"] = []
-        if "fo_intent" not in st.session_state:
-            st.session_state["fo_intent"] = None
+        recent_entries       = entries[-3:]
+        recent_agitation     = [e.get("behavioral_signals", {}).get("agitation_score", 0) for e in recent_entries]
+        avg_agitation        = round(sum(recent_agitation) / len(recent_agitation), 2) if recent_agitation else 0
+        recent_nlp           = all_nlp[-3:]
+        recent_sentiments    = [r.get("sentiment", {}).get("compound_score", 0) for r in recent_nlp]
+        avg_recent_sentiment = round(sum(recent_sentiments) / len(recent_sentiments), 2) if recent_sentiments else 0
+        recent_emotions      = [r.get("emotion", {}).get("dominant_emotion", "neutral") for r in recent_nlp]
+        dominant_emotion     = max(set(recent_emotions), key=recent_emotions.count) if recent_emotions else "neutral"
+        distortion_freq      = dist_history.get("frequency_map", {})
+        active_distortions   = [d for d, c in distortion_freq.items() if c > 1]
 
-        for msg in st.session_state["fo_history"]:
-            if msg["role"] == "user":
-                with st.chat_message("user"):
-                    st.markdown(msg["text"])
+        return {
+            "entry_count":             len(entries),
+            "avg_mood":                round(sum(moods)/len(moods), 2),
+            "avg_energy":              round(sum(energys)/len(energys), 2),
+            "avg_sleep":               round(sum(sleeps)/len(sleeps), 2),
+            "avg_recent_agitation":    avg_agitation,
+            "avg_recent_sentiment":    avg_recent_sentiment,
+            "dominant_recent_emotion": dominant_emotion,
+            "mood_trend":              patterns.get("mood_trend",   {}).get("trend", "stable"),
+            "energy_trend":            patterns.get("energy_trend", {}).get("trend", "stable"),
+            "sleep_affects_mood":      patterns.get("sleep_impact", {}).get("correlation_flag", False),
+            "best_day":                patterns.get("day_of_week",  {}).get("best_day",  "Unknown"),
+            "worst_day":               patterns.get("day_of_week",  {}).get("worst_day", "Unknown"),
+            "recurring_themes":        patterns.get("recurring_themes", []),
+            "most_common_distortion":  dist_history.get("most_common", "None"),
+            "active_distortions":      active_distortions,
+            "raw_entries":             entries,
+            "all_nlp":                 all_nlp
+        }
+
+    sh_module.build_profile = supabase_build_profile
+
+    for msg in st.session_state["fo_history"]:
+        if msg["role"] == "user":
+            with st.chat_message("user"):
+                st.markdown(msg["text"])
+        else:
+            with st.chat_message("assistant"):
+                st.markdown(msg["text"])
+
+    user_input = st.chat_input("Talk to Flush Out...")
+
+    if user_input:
+        st.session_state["fo_history"].append({"role": "user", "text": user_input})
+        response, is_clarifying, intent = flush_out(user_input, st.session_state["fo_history"])
+        st.session_state["fo_intent"] = intent
+        st.session_state["fo_history"].append({
+            "role": "fo", "text": response, "is_clarifying": is_clarifying
+        })
+        st.rerun()
+
+    st.markdown("---")
+    col_save, col_clear = st.columns(2)
+    with col_save:
+        if st.button("💾 Save Conversation", use_container_width=True):
+            if st.session_state["fo_history"]:
+                save_conversation(st.session_state["fo_history"])
+                st.success("Conversation saved.")
             else:
-                with st.chat_message("assistant"):
-                    st.markdown(msg["text"])
-
-        user_input = st.chat_input("Talk to Flush Out...")
-
-        if user_input:
-            st.session_state["fo_history"].append({
-                "role": "user",
-                "text": user_input
-            })
-
-            response, is_clarifying, intent = flush_out(
-                user_input,
-                st.session_state["fo_history"]
-            )
-
-            st.session_state["fo_intent"] = intent
-            st.session_state["fo_history"].append({
-                "role":          "fo",
-                "text":          response,
-                "is_clarifying": is_clarifying
-            })
-
-            col_module.load_all_entries = original_load
+                st.info("Nothing to save yet.")
+    with col_clear:
+        if st.button("🗑️ Clear Conversation", use_container_width=True):
+            st.session_state["fo_history"] = []
+            st.session_state["fo_intent"]  = None
             st.rerun()
 
-        col_module.load_all_entries = original_load
 
-        st.markdown("---")
-        col_save, col_clear = st.columns(2)
+# ===========================================================================
+# PAGE 6 — RESEARCHER DASHBOARD
+# ===========================================================================
 
-        with col_save:
-            if st.button("💾 Save Conversation", use_container_width=True):
-                if st.session_state["fo_history"]:
-                    save_conversation(st.session_state["fo_history"])
-                    st.success("Conversation saved.")
-                else:
-                    st.info("Nothing to save yet.")
+elif page == "🔬 Researcher":
 
-        with col_clear:
-            if st.button("🗑️ Clear Conversation", use_container_width=True):
-                st.session_state["fo_history"] = []
-                st.session_state["fo_intent"]  = None
+    st.title("🔬 Researcher Dashboard")
+    st.markdown("*Cross-user psychological analysis — no raw journal text.*")
+    st.markdown("---")
+
+    if "researcher_auth" not in st.session_state:
+        st.session_state["researcher_auth"] = False
+
+    if not st.session_state["researcher_auth"]:
+        pwd = st.text_input("Enter Researcher PIN", type="password")
+        if st.button("Unlock"):
+            if pwd == RESEARCHER_PASSWORD:
+                st.session_state["researcher_auth"] = True
                 st.rerun()
+            else:
+                st.error("Wrong PIN.")
+        st.stop()
 
-    # =======================================================================
-    # PAGE 6 — RESEARCHER DASHBOARD
-    # =======================================================================
+    data = load_researcher_data()
 
-    elif page == "🔬 Researcher":
+    if not data:
+        st.info("No user data available yet.")
+        st.stop()
 
-        st.title("🔬 Researcher Dashboard")
-        st.markdown("*Cross-user psychological analysis — no journal text visible.*")
-        st.markdown("---")
+    st.markdown(f"### 👥 {len(data)} User(s) Analyzed")
+    st.markdown("---")
 
-        # PIN protection
-        if "researcher_auth" not in st.session_state:
-            st.session_state["researcher_auth"] = False
+    for user_data in data:
+        uname     = user_data.get("username", "?").title()
+        flagged   = user_data.get("risk_flagged", False)
+        flag_icon = "🚨" if flagged else "✅"
 
-        if not st.session_state["researcher_auth"]:
-            st.warning("🔒 This page is PIN-protected.")
-            r_pin = st.text_input("Enter Researcher PIN",
-                                   type="password", max_chars=6)
-            if st.button("Unlock", use_container_width=True):
-                if r_pin == RESEARCHER_PIN:
-                    st.session_state["researcher_auth"] = True
-                    st.rerun()
-                else:
-                    st.error("Wrong PIN.")
-            st.stop()
+        with st.expander(
+            f"{flag_icon} **{uname}**  —  "
+            f"Mood: {user_data.get('avg_mood','?')}/10  |  "
+            f"Entries: {user_data.get('entry_count','?')}  |  "
+            f"{'⚠️ FLAGGED' if flagged else 'Stable'}"
+        ):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Avg Mood",    f"{user_data.get('avg_mood','?')}/10")
+                st.metric("Mood Trend",  user_data.get("mood_trend","?").title())
+            with c2:
+                st.metric("Avg Energy",   f"{user_data.get('avg_energy','?')}/10")
+                st.metric("Energy Trend", user_data.get("energy_trend","?").title())
+            with c3:
+                st.metric("Avg Sleep", f"{user_data.get('avg_sleep','?')}h")
+                st.metric("Entries",   user_data.get("entry_count","?"))
 
-        # --- Researcher content ---
-        st.success("✅ Access granted.")
-
-        data = load_researcher_data()
-
-        if not data:
-            st.info(
-                "No analysis data yet. "
-                "Users need to visit the Insights page to generate snapshots."
+            st.markdown("---")
+            st.markdown(
+                f"**Dominant Emotion:** {user_data.get('dominant_emotion','?').title()}  |  "
+                f"**Most Common Distortion:** {user_data.get('most_common_distortion','None')}  |  "
+                f"**Risk Flagged:** {'YES ⚠️' if flagged else 'No'}"
             )
-            st.stop()
 
-        st.markdown(f"### 👥 {len(data)} User(s) Analyzed")
-        st.markdown("---")
-
-        for user_data in data:
-            uname       = user_data.get("username", "unknown")
-            risk_flag   = user_data.get("risk_flagged", False)
-            entry_count = user_data.get("entry_count", 0)
-
-            # Header with risk indicator
-            risk_label = "🔴 FLAGGED" if risk_flag else "🟢 Stable"
-            st.markdown(f"## {uname.title()}  —  {risk_label}")
-
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                st.metric("Avg Mood",   f"{user_data.get('avg_mood',   0)}/10")
-            with col2:
-                st.metric("Avg Energy", f"{user_data.get('avg_energy', 0)}/10")
-            with col3:
-                st.metric("Avg Sleep",  f"{user_data.get('avg_sleep',  0)}h")
-            with col4:
-                st.metric("Entries",    entry_count)
-
-            col5, col6, col7 = st.columns(3)
-
-            with col5:
-                mood_t = user_data.get("mood_trend", "stable")
-                emoji  = "📈" if mood_t == "improving" else \
-                         ("📉" if mood_t == "declining" else "➡️")
-                st.metric("Mood Trend", f"{emoji} {mood_t.title()}")
-
-            with col6:
-                st.metric("Dominant Emotion",
-                          user_data.get("dominant_emotion", "neutral").title())
-
-            with col7:
-                st.metric("Most Common Distortion",
-                          user_data.get("most_common_distortion", "None"))
-
-            if risk_flag:
+            if flagged:
                 st.error(
-                    f"⚠️ **{uname.title()}** has been flagged. "
-                    f"Mood, sentiment, or sleep patterns suggest they may be struggling. "
+                    f"⚠️ {uname} has been flagged. "
+                    f"Their mood/sentiment has been consistently low. "
                     f"Consider checking in with them."
                 )
 
-            st.markdown(f"*Last snapshot: {user_data.get('snapshot_date', '?')}*")
-            st.markdown("---")
-
-        if st.button("🔒 Lock Dashboard", use_container_width=True):
-            st.session_state["researcher_auth"] = False
-            st.rerun()
-
-
-# ===========================================================================
-# ROUTER — Login screen or main app
-# ===========================================================================
-
-if st.session_state["logged_in"]:
-    show_main_app()
-else:
-    show_login()
+    st.markdown("---")
+    st.markdown("*Raw journal text is never shown here. Only behavioral metrics.*")

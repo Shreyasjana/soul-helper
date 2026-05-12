@@ -34,7 +34,7 @@ from modules.database            import (create_user, verify_user,
 
 st.set_page_config(page_title="Soul Helper", page_icon="🧠", layout="wide")
 
-RESEARCHER_PASSWORD = "shreyasresearch2025"
+RESEARCHER_PASSWORD = "007700"
 
 if "logged_in"  not in st.session_state: st.session_state["logged_in"]  = False
 if "username"   not in st.session_state: st.session_state["username"]   = None

@@ -8,6 +8,8 @@ import sys
 import os
 import pandas as pd
 from datetime import datetime, timedelta
+import pytz
+IST = pytz.timezone("Asia/Kolkata")
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -168,7 +170,7 @@ if page == "📓 Journal":
     st.markdown("Write freely. This is your space. The system will read between the lines so you don't have to.")
     st.markdown("---")
 
-    now  = datetime.now()
+    now  = datetime.now(IST)
     hour = now.hour
 
     if 0 <= hour < 12:
@@ -445,7 +447,7 @@ elif page == "🧩 Distortions":
 
     entries, all_nlp, all_dist = load_and_process_all(username)
     st.markdown("### 🔍 Most Recent Entry Analysis")
-    today_entries = load_entries_by_day_db(username, get_session_day(datetime.now()))
+    today_entries = load_entries_by_day_db(username, get_session_day(datetime.now(IST)))
     if today_entries:
         latest_dist = detect_distortions(today_entries[-1].get("journal",""))
         summary     = get_distortion_summary(latest_dist)
@@ -496,7 +498,7 @@ elif page == "📋 Weekly Report":
 
         st.markdown("---")
         st.markdown(f"## 🧠 Report for {username.title()}")
-        st.markdown(f"*{datetime.now().strftime('%d %B %Y, %I:%M %p')}  |  {len(entries)} entries  |  {session_day_count} days*")
+        st.markdown(f"*{datetime.now(IST).strftime('%d %B %Y, %I:%M %p')}  |  {len(entries)} entries  |  {session_day_count} days*")
         st.markdown("---")
 
         moods   = [e.get("mood",5)        for e in entries]

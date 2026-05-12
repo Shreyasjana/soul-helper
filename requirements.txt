@@ -9,3 +9,4 @@ matplotlib
 fpdf
 supabase
 python-dotenv
+pytz

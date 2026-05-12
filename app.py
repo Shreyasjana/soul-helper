@@ -168,7 +168,7 @@ if st.sidebar.button("🚪 Logout"):
 if page == "📓 Journal":
     st.title("📓 Daily Journal")
     st.markdown("Write freely. This is your space. The system will read between the lines so you don't have to.")
-    st.markdown("---")
+    st.caption("📌 This is where you journal daily. You can write multiple times a day. After saving, you'll get an instant mood and emotion analysis. Click 'Today's Snapshot' anytime to see a full summary of your day.")    st.markdown("---")
 
     now  = datetime.now(IST)
     hour = now.hour
@@ -311,7 +311,7 @@ if page == "📓 Journal":
 
 elif page == "🔍 Insights":
     st.title("🔍 Insights")
-
+    st.caption("📌 This page shows how your mood, energy, and emotions have changed over time. You'll see graphs, patterns, sleep impact, day-of-week trends, predictions for tomorrow, and personalized suggestions — all based on your journal data. Updates every time you journal.")
     if entry_count == 0:
         st.info("Write your first journal entry to start seeing insights.")
         st.stop()
@@ -440,7 +440,7 @@ elif page == "🔍 Insights":
 
 elif page == "🧩 Distortions":
     st.title("🧩 Cognitive Distortion Tracker")
-    st.markdown("---")
+    st.caption("📌 Cognitive distortions are irrational thinking patterns — like catastrophizing, self-blame, or black-and-white thinking. This page scans your journal text for these patterns using CBT (Cognitive Behavioral Therapy) frameworks and tracks which ones show up most often in your thinking.")    st.markdown("---")
     if entry_count == 0:
         st.info("No journal entries yet.")
         st.stop()
@@ -477,7 +477,7 @@ elif page == "🧩 Distortions":
 
 elif page == "📋 Weekly Report":
     st.title("📋 Weekly Psychological Report")
-    st.markdown("---")
+    st.caption("📌 Click the button to generate a full report of your psychological patterns — mood trends, energy levels, sleep, emotional tone, cognitive distortions, and personalized interventions. All your data compiled into one readable summary.")    st.markdown("---")
     if entry_count == 0:
         st.info("No entries yet. Start journaling first.")
         st.stop()
@@ -548,7 +548,7 @@ elif page == "📋 Weekly Report":
 
 elif page == "💬 Flush Out":
     st.title("💬 Flush Out")
-    st.markdown("*Your personal assistant — trained on your journals, not on strangers.*")
+    st.caption("📌 FO is your personal companion — it knows you from your journals. Talk about anything: your day, problems, random topics, philosophy, or just chat. The more you journal, the more personal and accurate FO's responses become.")    st.markdown("*Your personal assistant — trained on your journals, not on strangers.*")
     st.markdown("---")
 
     with st.expander("💡 What is Flush Out?"):
@@ -659,7 +659,7 @@ a psychological understanding of who you are.
 
 elif page == "🔬 Researcher":
     st.title("🔬 Researcher Dashboard")
-    st.markdown("*Cross-user psychological analysis — no raw journal text.*")
+    st.caption("📌 Password-protected page for the researcher only. Shows behavioral analysis of all users — mood trends, emotional patterns, distortion frequency, and risk flags. Raw journal text is never shown here.")    st.markdown("*Cross-user psychological analysis — no raw journal text.*")
     st.markdown("---")
 
     if "researcher_auth" not in st.session_state:

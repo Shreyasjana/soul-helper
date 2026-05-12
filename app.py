@@ -305,6 +305,70 @@ if page == "📓 Journal":
     else:
         st.info("No entries yet for this session. Start writing above.")
 
+# -------------------------------------------------------------------
+    # PAST ENTRIES BROWSER
+    # -------------------------------------------------------------------
+    st.markdown("---")
+    st.markdown("### 📅 Browse Past Entries")
+    st.caption("View your journal entries from any previous day.")
+
+    all_entries_ever = load_journal_entries(username)
+
+    if not all_entries_ever:
+        st.info("No past entries yet.")
+    else:
+        # Get all unique session days
+        all_days = sorted(
+            set(e.get("session_day", "") for e in all_entries_ever),
+            reverse=True
+        )
+
+        selected_day = st.selectbox(
+            "Select a date",
+            options=all_days,
+            key="past_day_selector"
+        )
+
+        if selected_day:
+            past_entries = load_entries_by_day_db(username, selected_day)
+
+            if past_entries:
+                st.markdown(f"**{len(past_entries)} entry/entries for {selected_day}:**")
+                for i, e in enumerate(past_entries, 1):
+                    with st.expander(
+                        f"Entry {i}  —  {e['time']}  |  "
+                        f"Mood: {e['mood']}/10  |  "
+                        f"Energy: {e['energy']}/10"
+                    ):
+                        st.markdown(
+                            f"**Time:** {e['time']}  |  "
+                            f"**Mood:** {e['mood']}/10  |  "
+                            f"**Energy:** {e['energy']}/10  |  "
+                            f"**Sleep:** {e['sleep_hours']}h"
+                        )
+                        st.info(e['journal'])
+
+                        # Quick NLP on past entry
+                        nlp  = process_journal(e['journal'])
+                        dist = detect_distortions(e['journal'])
+
+                        col_x, col_y, col_z = st.columns(3)
+                        with col_x:
+                            label = nlp["sentiment"]["label"]
+                            emoji = "😊" if label=="positive" else ("😔" if label=="negative" else "😐")
+                            st.caption(f"Sentiment: {emoji} {label.title()}")
+                        with col_y:
+                            emotion = nlp["emotion"]["dominant_emotion"].title()
+                            st.caption(f"Emotion: {emotion}")
+                        with col_z:
+                            ag = e['behavioral_signals']['agitation_score']
+                            st.caption(f"Agitation: {ag}")
+
+                        if not dist["clean"]:
+                            st.warning(get_distortion_summary(dist))
+            else:
+                st.info(f"No entries found for {selected_day}.")
+
 
 # ===========================================================================
 # PAGE 2 — INSIGHTS (from day 1)
